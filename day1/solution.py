@@ -20,13 +20,13 @@ def part1():
 def part2():
     t = 0
     n = 50
-    # I'm sure there's a fancy arithmetic way to do this but I'm too tired
-    for r in rotations:
-        extra_amt = abs(int(r / 100))
-                   # take the remainder and keep the sign
-        base_amt = n + (r - int(r / 100) * 100) not in range(1, 100) and n != 0
-        t += base_amt + extra_amt
-        n = (n + r) % 100
+    for rot in rotations:
+        sign = -1 if rot < 0 else 1
+        edges = (n + rot, n + sign)
+        left, right = min(edges), max(edges)
+        t += right // 100 - (left - 1) // 100
+        n = (n + rot) % 100
+
     return t
 
 
