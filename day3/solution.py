@@ -4,37 +4,47 @@ current_dir = Path(__file__).parent
 input_file = Path(current_dir, "input.txt")
 
 lines = input_file.read_text().splitlines()
+maxx = len(lines[0])
+maxy = len(lines)
 
+mp = {(x, y): c for y, l in enumerate(lines) for x, c in enumerate(l)}
 
-def max_i(s, start, end):
-    m = int(s[end-1])
-    mi = end-1
-    for i in range(end-1, start-1, -1):
-        n = int(s[i])
-        if n >= m:
-            m, mi = n, i
-    return mi
-
-
-def solve(l):
-    tot = 0
-    for line in lines:
-        n = ""
-        last_max_i = -1
-        for i in range(l):
-            start, end = last_max_i + 1, len(line) - (l - i - 1)
-            last_max_i = max_i(line, start, end)
-            n += line[last_max_i]
-        tot += int(n)
-    return tot
-
+def adj(mp, coords):
+    x, y = coords
+    return [coords for coords in [
+        (x, y + 1),
+        (x + 1, y + 1),
+        (x + 1, y),
+        (x + 1, y - 1),
+        (x, y - 1),
+        (x - 1, y - 1),
+        (x - 1, y),
+        (x - 1, y + 1),
+    ] if coords in mp]
 
 def part1():
-    return solve(2)
-
+    tot = 0
+    for coord in mp:
+        nbs = [c for c in adj(mp, coord) if mp[c] == "@"]
+        print(coord, mp[coord], nbs, [mp[c] for c in nbs])
+        tot += len(nbs) < 4 and mp[coord] == "@"
+    return tot
 
 def part2():
-    return solve(12)
+    tot = 0
+    removed_iter = 1000
+    while removed_iter > 0:
+        toremove = []
+        removed_iter = 0
+        for coord in mp:
+            nbs = [c for c in adj(mp, coord) if mp[c] == "@"]
+            if len(nbs) < 4 and mp[coord] == "@":
+                tot += 1
+                toremove.append(coord)
+                removed_iter += 1
+        for coord in toremove:
+            mp[coord] = "x"
+    return tot
 
 
 print(part1())
