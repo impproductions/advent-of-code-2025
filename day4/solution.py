@@ -29,11 +29,11 @@ def part2():
         while len(stack) > 0:
             curr = stack.pop()
             nbs = mapped[curr]
+            visited.add(curr)
+            island.add(curr)
             for n in nbs:
                 if n in island:
                     continue
-                visited.add(n)
-                island.add(n)
                 stack.append(n)
         cols = list(zip(*island))
         merged[r] = max(cols[1]) - min(cols[0]) + 1
