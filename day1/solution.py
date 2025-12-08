@@ -5,8 +5,6 @@ input_file = Path(current_dir, "input.txt")
 
 lines = input_file.read_text().splitlines()
 rotations = [int(l[1:]) * (-1 if l[0] == "L" else 1) for l in lines]
-# print(rotations)
-
 
 def part1():
     n = 50

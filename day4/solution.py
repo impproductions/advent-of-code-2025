@@ -3,25 +3,25 @@ from pathlib import Path
 current_dir = Path(__file__).parent
 input_file = Path(current_dir, "input.txt")
 
-t1, t2 = input_file.read_text().split("\n\n")
+lines = input_file.read_text().splitlines()
 
-ranges = [list(map(int, l.split("-"))) for l in t1.splitlines()]
-ids = list(map(int, t2.splitlines()))
+points = set((x, y) for y, l in enumerate(lines) for x, _ in enumerate(l) if lines[y][x] == "@")
+
+def get_nbs(mp, p):
+    x, y = p
+    return [nb for dx in range(-1, 2) for dy in range(-1, 2) if (dx, dy) != (0, 0) and (nb := (x + dx, y + dy)) in mp]
 
 def part1():
-    return sum(any(id in range(r[0], r[1] + 1) for r in ranges) for id in ids)
+    return sum(len(get_nbs(points, coord)) < 4 for coord in points)
 
 def part2():
-    ranges.sort()
-    merged = ranges[:1]
-    for s2, e2 in ranges[1:]:
-        s, e = merged[-1]
-        if s2 in range(s, e+1):
-            merged[-1][1] = max(e2, e)
-            continue
-        merged.append([s2, max(e2, e)])
-
-    return sum(e - s + 1 for s, e in merged)
+    tot, diff = 0, 1
+    while diff > 0:
+        prev_l = len(points)
+        points.difference_update(tuple(p for p in points if len(get_nbs(points, p)) < 4))
+        diff = prev_l - len(points)
+        tot += diff
+    return tot
 
 
 print(part1())

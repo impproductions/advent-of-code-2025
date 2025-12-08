@@ -5,23 +5,36 @@ input_file = Path(current_dir, "input.txt")
 
 lines = input_file.read_text().splitlines()
 
-points = set((x, y) for y, l in enumerate(lines) for x, _ in enumerate(l) if lines[y][x] == "@")
 
-def get_nbs(mp, p):
-    x, y = p
-    return [nb for dx in range(-1, 2) for dy in range(-1, 2) if (dx, dy) != (0, 0) and (nb := (x + dx, y + dy)) in mp]
+def max_i(s, start, end):
+    m = int(s[end-1])
+    mi = end-1
+    for i in range(end-1, start-1, -1):
+        n = int(s[i])
+        if n >= m:
+            m, mi = n, i
+    return mi
+
+
+def solve(l):
+    tot = 0
+    for line in lines:
+        n = ""
+        last_max_i = -1
+        for i in range(l):
+            start, end = last_max_i + 1, len(line) - (l - i - 1)
+            last_max_i = max_i(line, start, end)
+            n += line[last_max_i]
+        tot += int(n)
+    return tot
+
 
 def part1():
-    return sum(len(get_nbs(points, coord)) < 4 for coord in points)
+    return solve(2)
+
 
 def part2():
-    tot, diff = 0, 1
-    while diff > 0:
-        prev_l = len(points)
-        points.difference_update(tuple(p for p in points if len(get_nbs(points, p)) < 4))
-        diff = prev_l - len(points)
-        tot += diff
-    return tot
+    return solve(12)
 
 
 print(part1())
