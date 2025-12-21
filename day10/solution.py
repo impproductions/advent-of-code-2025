@@ -1,15 +1,11 @@
 from collections import defaultdict
 from functools import cache
-from hmac import new
 from itertools import count, product
-import itertools
-from math import comb
 from pathlib import Path
 from pprint import pprint
-from re import I
 
 current_dir = Path(__file__).parent
-input_file = Path(current_dir, "example1.txt")
+input_file = Path(current_dir, "input.txt")
 lines = input_file.read_text().splitlines()
 lines = [l.split(" ") for l in lines]
 lines = [(l[0], l[1:-1], l[-1]) for l in lines]
@@ -30,32 +26,6 @@ def print_bin(l):
 def all_seq(items):
     for k in count(1):
         yield from product(items, repeat=k)
-
-
-def dijkstra(start, neighbors_fn, is_goal_fn):
-    visited = set()
-    queue = [(0, start)]
-
-    while queue:
-        queue.sort(key=lambda x: x[0])
-        cost, node = queue.pop(0)
-        print(cost, node)
-
-        if node in visited:
-            continue
-
-        visited.add(node)
-
-        if is_goal_fn(node):
-            print("found!")
-            return cost
-
-        for neighbor in neighbors_fn(node):
-            edge_cost = 1
-            if neighbor not in visited:
-                queue.append((cost + edge_cost, neighbor))
-
-    return None, None
 
 
 def binom(n, k):
@@ -102,6 +72,7 @@ def sequence(k, start_sum, offset_within_sum=0):
     for i in count(base):
         yield unrank_weak_composition(i, k)
 
+
 @cache
 def combs_for_seq(target, buttonsets):
     # print(print_bin(target), print_bin(buttonsets))
@@ -141,6 +112,109 @@ def part1():
     return tot
 
 
+def build_equations(target, options):
+    n = len(target)
+    eqs = []
+    for i in range(n):
+        vars_in_eq = [j for j, v in enumerate(options) if v[i] == 1]
+        eqs.append((vars_in_eq, target[i]))
+    return eqs
+
+
+def initial_bounds(target, options):
+    m = len(options)
+    n = len(target)
+    lb = [0] * m
+    ub = [0] * m
+    for j in range(m):
+        coords = [i for i in range(n) if options[j][i] == 1]
+        if not coords:
+            lb[j] = 0
+            ub[j] = 0
+        else:
+            ub[j] = min(target[i] for i in coords)
+    return lb, ub
+
+
+def prune_once(eqs, lb, ub):
+    changed = False
+    for vars_in_eq, T in eqs:
+        sum_l = sum(lb[j] for j in vars_in_eq)
+        sum_u = sum(ub[j] for j in vars_in_eq)
+
+        if sum_l > T or sum_u < T:
+            return None, None, True, False  # infeasible, changed?, contradiction
+
+        for j in vars_in_eq:
+            others_u = sum_u - ub[j]
+            others_l = sum_l - lb[j]
+
+            new_lb = max(lb[j], T - others_u)
+            new_ub = min(ub[j], T - others_l)
+
+            if new_lb > new_ub:
+                return None, None, True, False  # contradiction
+
+            if new_lb != lb[j] or new_ub != ub[j]:
+                lb[j], ub[j] = new_lb, new_ub
+                changed = True
+
+    return lb, ub, changed, True  # ok
+
+
+def prune_to_fixpoint(eqs, lb, ub, verbose=False):
+    step = 0
+    if verbose:
+        print("eqs:", eqs)
+        print("start lb:", lb)
+        print("start ub:", ub)
+        print()
+
+    while True:
+        step += 1
+        res_lb, res_ub, changed, ok = prune_once(eqs, lb, ub)
+        if not ok:
+            if verbose:
+                print("CONTRADICTION at step", step)
+            return None, None, False
+
+        if verbose:
+            print("step", step, "changed:", changed)
+            print("lb:", res_lb)
+            print("ub:", res_ub)
+            print()
+
+        if not changed:
+            return res_lb, res_ub, True
+
+
+def solve_ilp(
+    target,
+    options,
+):
+    import pulp
+
+    n = len(target)
+    m = len(options)
+
+    prob = pulp.LpProblem("min_multiset_sum", pulp.LpMinimize)
+
+    x = [pulp.LpVariable(f"x_{j}", lowBound=0, cat=pulp.LpInteger) for j in range(m)]
+
+    prob += pulp.lpSum(x)
+
+    for i in range(n):
+        prob += pulp.lpSum(options[j][i] * x[j] for j in range(m)) == target[i]
+
+    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))
+    if pulp.LpStatus[status] != "Optimal":
+        raise RuntimeError(f"Solver status: {pulp.LpStatus[status]}")
+
+    sol = [int(pulp.value(xj)) for xj in x]
+    obj = int(pulp.value(prob.objective))
+    return sol, obj
+
+
 def part2():
     nl = []
     # buttons are 0-9
@@ -157,81 +231,91 @@ def part2():
             )
             new_button_sets.append(new_bset)
         nl.append((tuple(js), tuple(new_button_sets)))
+
     tot = 0
 
-    for target, buttonsets in nl[:1]:
-        print(target, buttonsets)
-        alphabet = iter("abcdefghijklmnopqrstuvwxyz")
-        toprint = {bs: next(alphabet) for bs in buttonsets}
-        constraints = {}
-        maxes = {bs: max(target) for bs in buttonsets}
-        mins = {bs: 0 for bs in buttonsets}
-        
-        for i, n in enumerate(target):
-            constraints[tuple(b for b in buttonsets if b[i] == 1)] = n
-        # for amt, group in constraints:
-        #     for bs in group:
-        #         maxes[bs] = min(maxes[bs], amt)
+    for target, buttonsets in nl:
+        # sol, obj = solve_ilp(target, buttonsets)
 
-        pprint(toprint)
-        last_constraints = constraints.copy()
-        for i in range(50):
-            print("STAGE", i)
-            for bs in buttonsets:
-                for items, amt in constraints.items():
-                    if bs in items:
-                        maxes[bs] = min(amt, maxes[bs])
-                    
-            new_constraints = {}
-            for items, amt in constraints.items():
-                for bs in items:
-                    if maxes[bs] < amt:
-                        if len(items) > 2:
-                            k = tuple(it for it in items if it != bs)
-                            new_constraints[k] = amt - maxes[bs]
-                        else:
-                            mins[items[0]] = min(maxes[items[0]], amt - maxes[bs])
-                    # if mins[bs] > 0:
-                    #     if len(items) > 2:
-                    #         k = tuple(it for it in items if it != bs)
-                    #         new_constraints[k] = amt - maxes[bs]
-                    #     else:
-                    #         mins[items[0]] = min(maxes[items[0]], amt - maxes[bs])
-
-            for c, v in new_constraints.items():
-                constraints[c] = min(v, constraints.get(c, max(target)))
-
-            for items, amt in constraints.items():
-                # if len(items) == 1:
-                print([toprint[t] for t in items], amt)
-
-            for k, v in maxes.items():
-                print(toprint[k], mins[k], v)
-
-            if constraints == last_constraints:
-                break
-            last_constraints = constraints.copy()
-
-        for items, amt in constraints.items():
-            if len(items) == 1:
-                tot += amt
-                # print(toprint[items[0]], amt)
-        print(sum(v for k, v in constraints.items() if len(k) == 1))
-
-
-
+        print(target)
+        pprint(buttonsets)
+        # print(sol)
+        # print(obj)
+        # print("")
+        # tot += obj
     return tot
 
 
-print(part1())                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
-print(part2())
+# print(part1())
+# print(part2())
+
+from fractions import Fraction
+
+def solve(eqs, fixed=None):
+    fixed = fixed or {}
+
+    vars_ = []
+    seen = set()
+    for ks in eqs:
+        for x in ks:
+            if x not in fixed and x not in seen:
+                seen.add(x)
+                vars_.append(x)
+
+    m, n = len(eqs), len(vars_)
+    A = []
+
+    for ks, rhs in eqs.items():
+        row = [Fraction(0)] * (n + 1)
+        rhs = Fraction(rhs)
+        for x in ks:
+            if x in fixed:
+                rhs -= Fraction(fixed[x])
+            else:
+                row[vars_.index(x)] += 1
+        row[-1] = rhs
+        A.append(row)
+
+    r = 0
+    piv = [-1] * n
+    for c in range(n):
+        p = next((i for i in range(r, m) if A[i][c]), None)
+        if p is None:
+            continue
+        A[r], A[p] = A[p], A[r]
+        inv = 1 / A[r][c]
+        A[r] = [v * inv for v in A[r]]
+        for i in range(m):
+            if i != r and A[i][c]:
+                f = A[i][c]
+                A[i] = [A[i][j] - f * A[r][j] for j in range(n + 1)]
+        piv[c] = r
+        r += 1
+        if r == m:
+            break
+
+    for i in range(m):
+        if all(A[i][c] == 0 for c in range(n)) and A[i][-1] != 0:
+            return "none", None
+
+    if any(piv[c] == -1 for c in range(n)):
+        return "non_unique", None
+
+    sol = dict(fixed)
+    for c in range(n):
+        sol[vars_[c]] = A[piv[c]][-1]
+
+    return "unique", sol
 
 
-# print(bin(
-#       0b1011
-#     & 0b0001
-# ))
-# print(bin(
-#       0b1011
-#     & 0b0101
-# ))
+# ---- example ----
+eqs = {
+    ("e","f"): 3,
+    ("b","f"): 5,
+    ("c","d","e"): 4,
+    ("a","b","d"): 7,
+}
+
+print(solve(eqs, {"f": 1, "e": 2}))
+print(solve(eqs, {"f": 2, "a": 1}))
+
